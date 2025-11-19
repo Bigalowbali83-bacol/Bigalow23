@@ -18,7 +18,13 @@ import {
     signOut 
 } from 'firebase/auth';
 import { db, auth } from './firebaseConfig';
-import { v4 as uuidv4 } from 'uuid';
+
+// Helper untuk memastikan Firebase siap
+const checkConfig = () => {
+    if (!db || !auth) {
+        throw new Error("Koneksi Database Error: Konfigurasi Firebase belum diatur dengan benar di 'services/firebaseConfig.ts'.");
+    }
+};
 
 // --- API Functions ---
 
@@ -27,13 +33,16 @@ export const api = {
     // --- AUTHENTICATION ---
     
     login: async (email: string, password: string) => {
+        checkConfig();
         try {
             // 1. Login ke Firebase Auth
+            // @ts-ignore: Auth checked in checkConfig
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const firebaseUser = userCredential.user;
 
             // 2. Ambil data role dari Firestore (koleksi 'users')
             // Kita asumsikan dokumen user disimpan dengan ID = UID user
+            // @ts-ignore: db checked in checkConfig
             const userDocRef = doc(db, 'users', firebaseUser.uid);
             const userDocSnap = await getDoc(userDocRef);
 
@@ -56,13 +65,16 @@ export const api = {
     },
 
     register: async (email: string, password: string) => {
+        checkConfig();
         try {
             // 1. Buat user di Firebase Auth
+            // @ts-ignore: Auth checked in checkConfig
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const firebaseUser = userCredential.user;
             const role = email === 'admin@bacol.dev' ? 'admin' : 'user';
 
             // 2. Simpan detail user ke Firestore
+            // @ts-ignore: db checked in checkConfig
             await setDoc(doc(db, 'users', firebaseUser.uid), {
                 email: email,
                 role: role,
@@ -82,14 +94,18 @@ export const api = {
     },
 
     logout: async () => {
-        await signOut(auth);
+        if (auth) {
+            await signOut(auth);
+        }
     },
 
     // --- DATA CRUD (FIRESTORE) ---
 
     fetchCollection: async (collectionName: string, userId: string) => {
+        checkConfig();
         try {
             // Query data hanya milik user yang sedang login
+            // @ts-ignore: db checked in checkConfig
             const q = query(collection(db, collectionName), where("userId", "==", userId));
             const querySnapshot = await getDocs(q);
             
@@ -105,26 +121,17 @@ export const api = {
     },
 
     createItem: async (collectionName: string, item: any) => {
+        checkConfig();
         try {
-            // Hapus ID jika ada (biarkan Firestore generate atau gunakan logic uuid jika perlu konsistensi)
-            // Di aplikasi ini, ID sering di-generate di frontend (uuidv4) untuk optimis UI,
-            // tapi Firestore punya ID sendiri. 
-            // Strategi: Jika item punya ID, gunakan setDoc. Jika tidak, gunakan addDoc.
-            
-            // Namun, untuk simplisitas migrasi, kita biarkan Firestore generate ID dokumen,
-            // lalu kita update field 'id' di dalam dokumen agar sama (atau biarkan frontend handle).
-            // Tapi wait, frontend `useMockData` sering mengirim `id` (uuid).
-            
             const { id, ...dataToSave } = item;
             
-            // Jika item sudah membawa ID (dari frontend UUID), kita gunakan itu sebagai ID dokumen
             if (id) {
+                // @ts-ignore: db checked in checkConfig
                 await setDoc(doc(db, collectionName, id), dataToSave);
                 return { id, ...dataToSave };
             } else {
-                // Jika tidak, biarkan Firestore generate
+                // @ts-ignore: db checked in checkConfig
                 const docRef = await addDoc(collection(db, collectionName), dataToSave);
-                // Update dokumen agar field 'id' di dalam data sama dengan ID dokumen (opsional, tapi bagus untuk konsistensi)
                 await updateDoc(docRef, { id: docRef.id });
                 return { id: docRef.id, ...dataToSave };
             }
@@ -135,8 +142,10 @@ export const api = {
     },
 
     updateItem: async (collectionName: string, item: any) => {
+        checkConfig();
         try {
             if (!item.id) throw new Error("ID diperlukan untuk update");
+            // @ts-ignore: db checked in checkConfig
             const docRef = doc(db, collectionName, item.id);
             await updateDoc(docRef, item);
             return item;
@@ -147,7 +156,9 @@ export const api = {
     },
 
     deleteItem: async (collectionName: string, id: string) => {
+        checkConfig();
         try {
+            // @ts-ignore: db checked in checkConfig
             await deleteDoc(doc(db, collectionName, id));
             return id;
         } catch (error) {
@@ -157,16 +168,15 @@ export const api = {
     },
     
     hardReset: async (userId: string) => {
+        checkConfig();
         try {
             const collections = ["bku", "bkp", "peminjam", "setoran", "manual_payments", "reconciliation"];
+            // @ts-ignore: db checked in checkConfig
             const batch = writeBatch(db);
             let operationCount = 0;
 
-            // Firestore batch limit is 500. 
-            // Implementasi naif: loop fetch lalu delete. 
-            // Untuk production data besar, ini harus di-chunk.
-            
             for (const colName of collections) {
+                // @ts-ignore: db checked in checkConfig
                 const q = query(collection(db, colName), where("userId", "==", userId));
                 const snapshot = await getDocs(q);
                 
@@ -188,6 +198,7 @@ export const api = {
 
 // Helper untuk pesan error Firebase yang user-friendly
 const getFriendlyErrorMessage = (errorCode: string) => {
+    if (!db || !auth) return "Konfigurasi Database belum diset.";
     switch (errorCode) {
         case 'auth/invalid-credential':
             return "Email atau kata sandi salah.";
