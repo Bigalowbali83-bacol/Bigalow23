@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { BkuData, BkpData, ReconciliationHistoryEntry, PeminjamData } from '../types';
+import type { BkuData, BkpData, ReconciliationHistoryEntry, PeminjamData } from '../../types';
 import { formatCurrency, numberToWords } from '../utils/formatters';
 import { Repeat, CheckCircle, AlertCircle, BookOpen, BookCopy, Save } from 'lucide-react';
 import Notification from '../components/shared/Notification';
